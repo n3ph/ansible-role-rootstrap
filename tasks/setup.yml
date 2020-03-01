@@ -1,0 +1,67 @@
+---
+
+#------------------------------------------------------------------------------#
+# Deploy SSH user 'ansible'
+#
+# - create user and group
+# - add all given ssh public keys to authorized_keys file
+#------------------------------------------------------------------------------#
+
+- name: setup | create ansible group
+  become: true
+  group:
+    name: ansible
+
+- name: setup | create ansible user
+  become: true
+  user:
+    name: ansible
+    group: ansible
+
+- name: setup | add authorized keys to ansible user
+  become: true
+  authorized_key:
+    user: ansible
+    state: present
+    key: "{{ rootstrap_ansible_authorized_keys | join('\n') }}"
+    exclusive: true
+
+#------------------------------------------------------------------------------#
+# Set root password
+#
+# - default password for packer build
+# - host-specific password for direct server bootsstrapping
+#
+# NOTES:
+# - user.update_password could be `always` (default) or `on_create`
+# - `always` will update passwords if they differ.
+#   _BUT_: password gets updated on every run - Seems to be a BUG...
+#------------------------------------------------------------------------------#
+
+- name: setup | fetch default root password from 'vault + (rootstrap_password_lookup_default)'
+  set_fact:
+    rootstrap_password: "{{ rootstrap_password_lookup_default }}"
+  no_log: true
+  when: packer_builder_type is defined
+
+- name: setup | fetch host-specific root password from 'vault + (rootstrap_password_lookup)'
+  set_fact:
+    rootstrap_password: "{{ rootstrap_password_lookup }}"
+  no_log: true
+  when: packer_builder_type is not defined
+
+- name: setup | (always) update root password
+  become: true
+  user:
+    name: root
+    password: "{{ rootstrap_password | password_hash('sha512') }}"
+    update_password: always
+
+#------------------------------------------------------------------------------#
+# Switch to new privilege escalation model
+#------------------------------------------------------------------------------#
+
+- name: setup | switch to ansible SSH user
+  set_fact:
+    ansible_ssh_user: ansible
+  when: packer_builder_type is not defined

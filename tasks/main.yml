@@ -1,0 +1,41 @@
+---
+
+#------------------------------------------------------------------------------#
+# Probeing the currently implemented privilege escalation model.
+#
+# Applies _NOT_ to:
+# - Packer builds
+# - Vagrant containers
+# - SSH connections already using root
+#------------------------------------------------------------------------------#
+
+- import_tasks: become.yml
+  when:
+    - ansible_ssh_user not in ['vagrant', 'root']
+    - packer_builder_type is not defined
+
+#------------------------------------------------------------------------------#
+# Bootstrapping of 'ansible' user and 'root' password.
+#
+# Applies to:
+# - Packer builds
+# - direct remote deployment in bootstrapping mode, which is either:
+#     - remote user is set to something different than 'ansible', e.g.:
+#         ansible-playbook playbook.yml -u (default user)
+#     - 'rootstrap' is specified explicitly in the tags, e.g.:
+#         ansible-playbook playbook.yml -t rootstrap
+#------------------------------------------------------------------------------#
+
+- import_tasks: setup.yml
+  when: >-
+    (packer_builder_type is defined) or
+    ('rootstrap' in ansible_run_tags) or
+    (ansible_ssh_user not in ['vagrant','ansible'])
+
+#------------------------------------------------------------------------------#
+# gather facts
+#------------------------------------------------------------------------------#
+
+- name: gather facts
+  become: true
+  setup: {}

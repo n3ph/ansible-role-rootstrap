@@ -1,0 +1,92 @@
+---
+
+#------------------------------------------------------------------------------#
+# NOPASSWD sudo
+#
+# - direct remote deployment as non-root user
+# - check if the default priviledge escalation is working
+#------------------------------------------------------------------------------#
+
+- become: true
+  block:
+    - name: become | check the default priviledge escalation
+      shell: "(( $(id -u) == 0 ))"
+      changed_when: false
+      no_log: true
+
+  rescue:
+    - set_fact:
+        sudo_failed: true
+
+#------------------------------------------------------------------------------#
+# GOPASS|VAULT su (host-specific)
+#
+# - otherwise, switch to using su + custom root password
+# - check if host-specific root password is working
+#------------------------------------------------------------------------------#
+
+- when: sudo_failed | default(false)
+  become: false
+  check_mode: false
+  block:
+    - block:
+        - name: become | switch to 'su + vault (host-specific) - rootstrap_password_lookup'
+          set_fact:
+            ansible_become_method: su
+            ansible_become_pass: "{{ rootstrap_password_lookup }}"
+          no_log: true
+
+      rescue:
+        - fail:
+            msg: >-
+              Please define the root password with vault in '{{ rootstrap_password_lookup }}'
+              (as configured by `rootstrap_password_lookup` variable)
+
+    - name: become | check priviledge escalation with 'su + vault'
+      become: true
+      shell: "(( $(id -u) == 0 ))"
+      changed_when: false
+
+  rescue:
+    - set_fact:
+        su_failed: true
+
+#------------------------------------------------------------------------------#
+# GOPASS|VAULT su (default)
+#
+# - otherwise, check if default root password works
+# - if it does, update it with the host-specific one
+#------------------------------------------------------------------------------#
+
+- when: su_failed | default(false)
+  become: false
+  check_mode: false
+  block:
+    - block:
+        - name: become | switch to 'su + vault (default) - rootstrap_password_lookup_default'
+          set_fact:
+            ansible_become_method: su
+            ansible_become_pass: "{{ rootstrap_password_lookup_default }}"
+          no_log: true
+
+      rescue:
+        - fail:
+            msg: >-
+              Please define the default root password with vault in '{{ rootstrap_password_lookup_default }}'
+              (as configured by `rootstrap_password_lookup_default` variable)
+
+
+    - name: become | check priviledge escalation with 'su + vault (default)'
+      become: true
+      shell: "(( $(id -u) == 0 ))"
+      changed_when: false
+
+#------------------------------------------------------------------------------#
+# FAILED
+#
+# - otherwise, report priviledge escalation failure
+#------------------------------------------------------------------------------#
+
+  rescue:
+    - fail:
+        msg: Priviledge escalation failure
